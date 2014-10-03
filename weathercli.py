@@ -20,20 +20,19 @@ SNOW = u'\u2603'
 
 
 class BaseFormatter(object):
-
     def output(self, context, icon=False):
         if icon:
             return u"{0}\u00B0{1}".format(
-            context['temp'],
-            context['icon']
+                context['temp'],
+                context['icon']
             )
         return u"It's {0}\u00B0 and {1}".format(
             context['temp'],
             context['conditions'].lower()
         )
 
-class ForecastFormatter(BaseFormatter):
 
+class ForecastFormatter(BaseFormatter):
     def output(self, context, icon=False):
         ret = ""
         for c in context:
@@ -55,7 +54,6 @@ class WeatherDataError(Exception):
 
 
 class OpenWeatherMap(object):
-
     def __init__(self, formatter=BaseFormatter()):
         self.formatter = formatter
 
@@ -66,7 +64,7 @@ class OpenWeatherMap(object):
             urllib.quote_plus(query),
             units
         )).read()
-        
+
         try:
             weather = json.loads(raw_data)
         except ValueError:
@@ -78,7 +76,8 @@ class OpenWeatherMap(object):
                 context = []
                 for w in weather['list']:
                     context.append({
-                        'date': datetime.datetime.strptime(time.ctime(w['dt']), "%a %b %d %H:%M:%S %Y").strftime("%a, %d %b %Y"),
+                        'date': datetime.datetime.strptime(time.ctime(w['dt']), "%a %b %d %H:%M:%S %Y").strftime(
+                            "%a, %d %b %Y"),
                         'max': w['temp']['max'],
                         'min': w['temp']['min'],
                         'conditions': w['weather'][0]['description'],
@@ -124,7 +123,8 @@ class Arguments(object):
 
         self.parser = argparse.ArgumentParser(description="Outputs the weather for a given location query string")
         self.parser.add_argument('query', nargs="?", help="A location query string to find weather for")
-        self.parser.add_argument('-u', '--units', dest='units', choices=self.units.keys(), help="Units of measurement (default: fahrenheit)")
+        self.parser.add_argument('-u', '--units', dest='units', choices=self.units.keys(),
+                                 help="Units of measurement (default: fahrenheit)")
         self.parser.add_argument('--iconify', action='store_true', help="Show weather in icons?")
         self.parser.add_argument('--forecast', action='store_true', help="Show weather 5 days forecast")
 
@@ -147,7 +147,7 @@ def get_temp_color(conditions):
         (60, 'blue'),
         (80, 'yellow')
     ]
-        
+
     temperature_re = re.compile('(?P<temperature>-?\d+)')
     match = temperature_re.search(conditions)
     if match:
@@ -156,10 +156,9 @@ def get_temp_color(conditions):
                 return color[1]
         return 'red'
     return 'white'
-    
+
 
 class Weather(object):
-
     @classmethod
     def main(cls):
         arguments = Arguments()
