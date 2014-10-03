@@ -9,6 +9,8 @@ import sys
 import urllib
 
 from clint.textui import puts, colored
+import datetime
+import time
 
 
 SUN = u'\u2600'
@@ -17,22 +19,35 @@ RAIN = u'\u2602'
 SNOW = u'\u2603'
 
 
-class VerboseFormatter(object):
+class BaseFormatter(object):
 
-    def output(self, context):
+    def output(self, context, icon=False):
+        if icon:
+            return u"{0}\u00B0{1}".format(
+            context['temp'],
+            context['icon']
+            )
         return u"It's {0}\u00B0 and {1}".format(
             context['temp'],
             context['conditions'].lower()
         )
 
+class ForecastFormatter(BaseFormatter):
 
-class IconifyFormatter(object):
-
-    def output(self, context):
-        return u"{0}\u00B0{1}".format(
-            context['temp'],
-            context['icon']
-        )
+    def output(self, context, icon=False):
+        ret = ""
+        for c in context:
+            if icon:
+                conditions = c['icon']
+            else:
+                conditions = c['conditions'].lower()
+            ret += u"{0} - max: {1}\u00B0, min: {2}\u00B0, condition: {3}\n".format(
+                c['date'],
+                c['max'],
+                c['min'],
+                conditions
+            )
+        return ret
 
 
 class WeatherDataError(Exception):
@@ -41,11 +56,13 @@ class WeatherDataError(Exception):
 
 class OpenWeatherMap(object):
 
-    def __init__(self, formatter=VerboseFormatter()):
+    def __init__(self, formatter=BaseFormatter()):
         self.formatter = formatter
 
-    def now(self, query, units='imperial'):
-        raw_data = urllib.urlopen('http://api.openweathermap.org/data/2.5/weather?q={0}&units={1}'.format(
+    def now(self, query, units='imperial', forecast=False, icon=False):
+        api_url = {False: 'http://api.openweathermap.org/data/2.5/weather?q={0}&units={1}',
+                   True: 'http://api.openweathermap.org/data/2.5/forecast/daily?q={0}&units={1}'}
+        raw_data = urllib.urlopen(api_url[forecast].format(
             urllib.quote_plus(query),
             units
         )).read()
@@ -57,13 +74,24 @@ class OpenWeatherMap(object):
 
         context = {}
         try:
-            context['temp'] = int(weather['main']['temp'])
-            context['conditions'] = weather['weather'][0]['description']
-            context['icon'] = self.icon(weather['weather'][0]['icon'])
+            if forecast:
+                context = []
+                for w in weather['list']:
+                    context.append({
+                        'date': datetime.datetime.strptime(time.ctime(w['dt']), "%a %b %d %H:%M:%S %Y").strftime("%a, %d %b %Y"),
+                        'max': w['temp']['max'],
+                        'min': w['temp']['min'],
+                        'conditions': w['weather'][0]['description'],
+                        'icon': self.icon(w['weather'][0]['icon'])
+                    })
+            else:
+                context['temp'] = int(weather['main']['temp'])
+                context['conditions'] = weather['weather'][0]['description']
+                context['icon'] = self.icon(weather['weather'][0]['icon'])
         except KeyError:
             raise WeatherDataError("No conditions reported for your search")
 
-        return self.formatter.output(context)
+        return self.formatter.output(context, icon)
 
     def icon(self, code):
         codes = defaultdict(int, {
@@ -98,6 +126,7 @@ class Arguments(object):
         self.parser.add_argument('query', nargs="?", help="A location query string to find weather for")
         self.parser.add_argument('-u', '--units', dest='units', choices=self.units.keys(), help="Units of measurement (default: fahrenheit)")
         self.parser.add_argument('--iconify', action='store_true', help="Show weather in icons?")
+        self.parser.add_argument('--forecast', action='store_true', help="Show weather 5 days forecast")
 
     def parse(self, args, defaults={}):
         args = self.parser.parse_args(args)
@@ -105,6 +134,7 @@ class Arguments(object):
             'query': args.query or defaults.get(Arguments.QUERY),
             'units': self.units[args.units or defaults.get(Arguments.UNITS)],
             'iconify': args.iconify,
+            'forecast': args.forecast,
         }
 
     def help(self):
@@ -135,15 +165,20 @@ class Weather(object):
         arguments = Arguments()
 
         args = arguments.parse(sys.argv[1:], defaults=os.environ)
-        formatter = args['iconify'] and IconifyFormatter() or VerboseFormatter()
-        weather_provider = OpenWeatherMap(formatter=formatter)
 
         if not args['query']:
             print arguments.help()
             sys.exit(1)
 
+        if args['forecast']:
+            formatter = ForecastFormatter()
+        else:
+            formatter = BaseFormatter()
+
+        weather_provider = OpenWeatherMap(formatter=formatter)
+
         try:
-            conditions = weather_provider.now(args['query'], args['units'])
+            conditions = weather_provider.now(args['query'], args['units'], args['forecast'], args['iconify'])
         except WeatherDataError as e:
             print >> sys.stderr, "ERROR: {0}".format(e.message)
             sys.exit(1)
